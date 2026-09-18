@@ -138,6 +138,7 @@ impl SpanMatcher {
                             color: start_span.color,
                             span_refs,
                             scale_x: start_span.scale_x,
+                            is_right_aligned: false,
                         });
                     }
 
@@ -146,6 +147,43 @@ impl SpanMatcher {
                     break;
                 }
             }
+        }
+
+        // Post-process placeholders: automatically detect right-aligned text
+        let max_page_right = spans.iter().map(|s| s.x + s.width).fold(0.0f64, f64::max);
+        let min_page_left = spans.iter().map(|s| s.x).fold(f64::MAX, f64::min);
+        let page_content_width = (max_page_right - min_page_left).max(100.0);
+        let mid_x = min_page_left + page_content_width * 0.45;
+
+        // Group spans by line (y rounded to nearest 2 pt) to find the rightmost edge of each line
+        let mut line_rightmost: Vec<(f64, f64)> = Vec::new();
+        for span in spans {
+            let r = span.x + span.width;
+            if let Some(entry) = line_rightmost.iter_mut().find(|(y, _)| (span.y - *y).abs() < 2.0) {
+                if r > entry.1 {
+                    entry.1 = r;
+                }
+            } else {
+                line_rightmost.push((span.y, r));
+            }
+        }
+
+        for ph in &mut placeholders {
+            let ph_right = ph.x + ph.width;
+            let in_right_half = ph.x > mid_x;
+            let has_text_to_right = spans.iter().any(|s| {
+                (s.y - ph.y).abs() < 3.0 && s.x > ph_right + 2.0
+            });
+            let near_margin = !has_text_to_right && (max_page_right - ph_right).abs() < 10.0;
+            let matches_lines = if !has_text_to_right {
+                line_rightmost.iter().any(|(y, r)| {
+                    (y - ph.y).abs() > 3.0 && (y - ph.y).abs() < 250.0 && (r - ph_right).abs() < 3.0
+                })
+            } else {
+                false
+            };
+
+            ph.is_right_aligned = in_right_half && !has_text_to_right && (near_margin || matches_lines);
         }
 
         placeholders

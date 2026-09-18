@@ -148,6 +148,31 @@ pub fn validate_template(
     })
 }
 
+fn compute_available_width(ph: &Placeholder, spans: &[crate::model::TextSpan]) -> f64 {
+    let max_page_right = spans.iter().map(|s| s.x + s.width).fold(0.0f64, f64::max);
+    if ph.is_right_aligned {
+        // Right aligned: available width is distance to the nearest span to the left on the same line
+        let left_barrier = spans.iter()
+            .filter(|s| (s.y - ph.y).abs() < 4.0 && (s.x + s.width) < ph.x + 1.0)
+            .map(|s| s.x + s.width)
+            .fold(0.0f64, f64::max);
+        let space = (ph.x + ph.width) - left_barrier - 5.0;
+        ph.width.max(space)
+    } else {
+        // Left aligned: find nearest non-inline span to the right on the same line
+        let right_barrier = spans.iter()
+            .filter(|s| (s.y - ph.y).abs() < 4.0 && s.x > ph.x + ph.width + 10.0)
+            .map(|s| s.x)
+            .fold(f64::MAX, f64::min);
+        let space = if right_barrier < f64::MAX {
+            right_barrier - ph.x - 5.0
+        } else {
+            max_page_right - ph.x
+        };
+        ph.width.max(space)
+    }
+}
+
 /// Renders a PDF template by replacing all detected placeholders with evaluated values.
 pub fn render_template(
     pdf_bytes: &[u8],
@@ -203,11 +228,12 @@ pub fn render_template(
             };
 
             let font_info = parser.fonts.get(&ph.font_name).cloned().unwrap_or_default();
+            let available_width = compute_available_width(&ph, &spans);
 
             let layout = LayoutEngine::resolve_layout(
                 &ph.expression,
                 &text,
-                ph.width,
+                available_width,
                 ph.font_size,
                 &font_info,
                 options.overflow,

@@ -224,6 +224,25 @@ impl<'a> PageParser<'a> {
                         ]);
                     }
                 }
+                "sc" | "SC" | "scn" | "SCN" => {
+                    let nums = extract_f64_args(&op.operands);
+                    if nums.len() == 1 {
+                        let gray = nums[0] as f32;
+                        current_gstate.color = Some([gray, gray, gray]);
+                    } else if nums.len() == 3 {
+                        current_gstate.color = Some([nums[0] as f32, nums[1] as f32, nums[2] as f32]);
+                    } else if nums.len() >= 4 {
+                        let c = nums[0] as f32;
+                        let m = nums[1] as f32;
+                        let y = nums[2] as f32;
+                        let k = nums[3] as f32;
+                        current_gstate.color = Some([
+                            (1.0 - c) * (1.0 - k),
+                            (1.0 - m) * (1.0 - k),
+                            (1.0 - y) * (1.0 - k),
+                        ]);
+                    }
+                }
                 "BT" => {
                     text_matrix = Matrix::identity();
                     line_matrix = Matrix::identity();

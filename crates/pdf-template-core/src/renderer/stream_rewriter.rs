@@ -87,30 +87,111 @@ impl<'a> StreamRewriter<'a> {
             }
         }
 
-        // 3b. If a placeholder was followed by text in the same BT block (e.g. {{city}}, where ',' follows),
-        // shift the succeeding Td operator so the trailing text follows the rendered replacement text
+        // 3b. Shift coordinates for reflow and alignment
         for task in tasks {
             let ph = &task.placeholder;
             let layout = &task.layout;
-            let delta_w = layout.rendered_width - ph.width;
-            if delta_w.abs() > 0.1 && ph.scale_x > 1e-6 {
-                if let Some(last_ref) = ph.span_refs.last() {
-                    let last_op = last_ref.op_index;
-                    for i in (last_op + 1)..content.operations.len() {
-                        let op = &mut content.operations[i];
-                        if op.operator == "ET" || op.operator == "BT" || op.operator == "Tm" {
-                            break;
+
+            if ph.scale_x < 1e-6 {
+                continue;
+            }
+
+            if ph.is_right_aligned {
+                // For right-aligned placeholders:
+                // If the BT block containing the placeholder started before it (e.g. contained a currency symbol like '$'),
+                // shift that BT block's Tm so the preceding symbol shifts with the right-aligned text.
+                let delta_shift = (ph.width - layout.rendered_width) / ph.scale_x;
+                if delta_shift.abs() > 0.01 {
+                    if let Some(first_ref) = ph.span_refs.first() {
+                        let first_op = first_ref.op_index;
+                        for i in (0..first_op).rev() {
+                            let op = &mut content.operations[i];
+                            if op.operator == "BT" {
+                                break;
+                            }
+                            if op.operator == "Tm" {
+                                if let Some(operand) = op.operands.get_mut(4) {
+                                    match operand {
+                                        Object::Real(e) => *e += delta_shift as f32,
+                                        Object::Integer(e) => *operand = Object::Real(*e as f32 + delta_shift as f32),
+                                        _ => {}
+                                    }
+                                }
+                                break;
+                            }
                         }
-                        if op.operator == "Td" || op.operator == "TD" {
-                            let delta_w_text = delta_w / ph.scale_x;
-                            if let Some(operand) = op.operands.get_mut(0) {
-                                match operand {
-                                    Object::Real(dx) => *dx += delta_w_text as f32,
-                                    Object::Integer(dx) => *operand = Object::Real(*dx as f32 + delta_w_text as f32),
-                                    _ => {}
+                    }
+                }
+            } else {
+                // For left-aligned or inline placeholders:
+                let delta_w = layout.rendered_width - ph.width;
+                if delta_w.abs() > 0.1 {
+                    let delta_w_text = delta_w / ph.scale_x;
+
+                    if let Some(last_ref) = ph.span_refs.last() {
+                        let last_op = last_ref.op_index;
+
+                        // A) If followed by text in the same BT block (e.g. comma in "{{city}},"),
+                        // shift the succeeding Td operator
+                        for i in (last_op + 1)..content.operations.len() {
+                            let op = &mut content.operations[i];
+                            if op.operator == "ET" || op.operator == "BT" || op.operator == "Tm" {
+                                break;
+                            }
+                            if op.operator == "Td" || op.operator == "TD" {
+                                if let Some(operand) = op.operands.get_mut(0) {
+                                    match operand {
+                                        Object::Real(dx) => *dx += delta_w_text as f32,
+                                        Object::Integer(dx) => *operand = Object::Real(*dx as f32 + delta_w_text as f32),
+                                        _ => {}
+                                    }
+                                }
+                                break;
+                            }
+                        }
+
+                        // B) If followed by text in subsequent BT blocks on the SAME visual line
+                        // (e.g. "{{invoice.number}} within 15 calendar days..."):
+                        let mut ph_line_f: Option<f64> = None;
+                        for i in (0..=last_op).rev() {
+                            let op = &content.operations[i];
+                            if op.operator == "BT" {
+                                break;
+                            }
+                            if op.operator == "Tm" {
+                                if let Some(f_op) = op.operands.get(5) {
+                                    ph_line_f = crate::parser::font::obj_to_f64(f_op);
+                                }
+                                break;
+                            }
+                        }
+
+                        if let Some(target_f) = ph_line_f {
+                            for i in (last_op + 1)..content.operations.len() {
+                                let op = &mut content.operations[i];
+                                if op.operator == "cm" {
+                                    break;
+                                }
+                                if op.operator == "Tm" {
+                                    let cur_f = op.operands.get(5).and_then(crate::parser::font::obj_to_f64);
+                                    let cur_e = op.operands.get(4).and_then(crate::parser::font::obj_to_f64);
+                                    if let (Some(f), Some(e)) = (cur_f, cur_e) {
+                                        // If on the same visual line (within 2 pt) and positioned after placeholder
+                                        if (f - target_f).abs() < 2.0 && e >= (ph.x / ph.scale_x) - 1.0 {
+                                            if let Some(operand) = op.operands.get_mut(4) {
+                                                match operand {
+                                                    Object::Real(val) => *val += delta_w_text as f32,
+                                                    Object::Integer(val) => *operand = Object::Real(*val as f32 + delta_w_text as f32),
+                                                    _ => {}
+                                                }
+                                            }
+                                        } else if (f - target_f).abs() >= 2.0 {
+                                            // Different line reached, stop
+                                            break;
+                                        }
+                                    }
                                 }
                             }
-                            break;
                         }
                     }
                 }
@@ -143,14 +224,14 @@ impl<'a> StreamRewriter<'a> {
             let font_to_use = if self.has_font_resource(&ph.font_name) && self.is_font_safe_for_direct_ascii(&ph.font_name) {
                 ph.font_name.clone()
             } else {
-                let (is_bold, is_italic) = self.get_font_style(&ph.font_name);
-                let variant = match (is_bold, is_italic) {
-                    (true, true) => "Helvetica-BoldOblique",
-                    (true, false) => "Helvetica-Bold",
-                    (false, true) => "Helvetica-Oblique",
-                    (false, false) => "Helvetica",
-                };
-                self.ensure_fallback_font(variant)?
+                let variant = self.get_font_variant(&ph.font_name);
+                self.ensure_fallback_font(&variant)?
+            };
+
+            let render_x = if ph.is_right_aligned {
+                (ph.x + ph.width) - layout.rendered_width
+            } else {
+                ph.x
             };
 
             // Begin isolated graphics state
@@ -161,9 +242,9 @@ impl<'a> StreamRewriter<'a> {
                 content.operations.push(Operation::new(
                     "re",
                     vec![
-                        Object::Real(ph.x as f32),
+                        Object::Real(render_x as f32),
                         Object::Real((ph.y - ph.height * 0.2) as f32),
-                        Object::Real(ph.width as f32),
+                        Object::Real(layout.rendered_width.max(ph.width) as f32),
                         Object::Real((ph.height * 1.2) as f32),
                     ],
                 ));
@@ -212,7 +293,7 @@ impl<'a> StreamRewriter<'a> {
                         Object::Real(sin as f32),
                         Object::Real(-sin as f32),
                         Object::Real(cos as f32),
-                        Object::Real(ph.x as f32),
+                        Object::Real(render_x as f32),
                         Object::Real(line_y as f32),
                     ],
                 ));
@@ -341,9 +422,58 @@ impl<'a> StreamRewriter<'a> {
         false
     }
 
-    fn get_font_style(&self, font_name: &str) -> (bool, bool) {
+    fn get_font_variant(&self, font_name: &str) -> String {
+        let (is_bold, is_italic, is_serif, is_mono) = self.get_font_style(font_name);
+        if is_mono {
+            match (is_bold, is_italic) {
+                (true, true) => "Courier-BoldOblique".to_string(),
+                (true, false) => "Courier-Bold".to_string(),
+                (false, true) => "Courier-Oblique".to_string(),
+                (false, false) => "Courier".to_string(),
+            }
+        } else if is_serif {
+            match (is_bold, is_italic) {
+                (true, true) => "Times-BoldItalic".to_string(),
+                (true, false) => "Times-Bold".to_string(),
+                (false, true) => "Times-Italic".to_string(),
+                (false, false) => "Times-Roman".to_string(),
+            }
+        } else {
+            match (is_bold, is_italic) {
+                (true, true) => "Helvetica-BoldOblique".to_string(),
+                (true, false) => "Helvetica-Bold".to_string(),
+                (false, true) => "Helvetica-Oblique".to_string(),
+                (false, false) => "Helvetica".to_string(),
+            }
+        }
+    }
+
+    fn get_font_style(&self, font_name: &str) -> (bool, bool, bool, bool) {
         let mut is_bold = false;
         let mut is_italic = false;
+        let mut is_serif = false;
+        let mut is_mono = false;
+
+        let check_name = |name: &str, b: &mut bool, i: &mut bool, s: &mut bool, m: &mut bool| {
+            let lower = name.to_lowercase();
+            if lower.contains("bold") || lower.contains("black") || lower.contains("heavy")
+                || lower.contains("semibold") || lower.contains("demibold") || lower.contains("medium")
+                || lower.contains("w6") || lower.contains("w7") || lower.contains("w8") || lower.contains("w9")
+                || lower.contains("700") || lower.contains("800") || lower.contains("900") {
+                *b = true;
+            }
+            if lower.contains("italic") || lower.contains("oblique") || lower.contains("slanted") {
+                *i = true;
+            }
+            if lower.contains("times") || lower.contains("serif") || lower.contains("georgia")
+                || lower.contains("minion") || lower.contains("garamond") || lower.contains("baskerville") {
+                *s = true;
+            }
+            if lower.contains("courier") || lower.contains("mono") || lower.contains("console") || lower.contains("code") {
+                *m = true;
+            }
+        };
+
         if let Ok(page_dict) = self.doc.get_dictionary(self.page_id) {
             if let Ok(res) = page_dict.get(b"Resources") {
                 let res_dict = match res {
@@ -380,12 +510,7 @@ impl<'a> StreamRewriter<'a> {
                                     if let Ok(bf) = fd.get(b"BaseFont") {
                                         if let Ok(name_bytes) = bf.as_name() {
                                             let name = String::from_utf8_lossy(name_bytes);
-                                            if name.contains("Bold") || name.contains("bold") || name.contains("Black") || name.contains("Heavy") {
-                                                is_bold = true;
-                                            }
-                                            if name.contains("Italic") || name.contains("italic") || name.contains("Oblique") {
-                                                is_italic = true;
-                                            }
+                                            check_name(&name, &mut is_bold, &mut is_italic, &mut is_serif, &mut is_mono);
                                         }
                                     }
                                     if let Ok(desc_obj) = fd.get(b"FontDescriptor") {
@@ -401,17 +526,21 @@ impl<'a> StreamRewriter<'a> {
                                             if let Ok(fn_obj) = dd.get(b"FontName") {
                                                 if let Ok(name_bytes) = fn_obj.as_name() {
                                                     let name = String::from_utf8_lossy(name_bytes);
-                                                    if name.contains("Bold") || name.contains("bold") || name.contains("Black") || name.contains("Heavy") {
-                                                        is_bold = true;
-                                                    }
-                                                    if name.contains("Italic") || name.contains("italic") || name.contains("Oblique") {
-                                                        is_italic = true;
-                                                    }
+                                                    check_name(&name, &mut is_bold, &mut is_italic, &mut is_serif, &mut is_mono);
                                                 }
                                             }
                                             if let Ok(fw) = dd.get(b"FontWeight") {
                                                 if let Some(w) = crate::parser::font::obj_to_f64(fw) {
                                                     if w >= 600.0 { is_bold = true; }
+                                                }
+                                            }
+                                            if let Ok(flags_obj) = dd.get(b"Flags") {
+                                                if let Some(flags) = crate::parser::font::obj_to_f64(flags_obj) {
+                                                    let fl = flags as u32;
+                                                    if (fl & (1 << 6)) != 0 { is_italic = true; }
+                                                    if (fl & (1 << 18)) != 0 { is_bold = true; }
+                                                    if (fl & (1 << 1)) != 0 { is_serif = true; }
+                                                    if (fl & (1 << 0)) != 0 { is_mono = true; }
                                                 }
                                             }
                                         }
@@ -423,7 +552,7 @@ impl<'a> StreamRewriter<'a> {
                 }
             }
         }
-        (is_bold, is_italic)
+        (is_bold, is_italic, is_serif, is_mono)
     }
 
     fn ensure_fallback_font(&mut self, variant: &str) -> Result<String> {

@@ -60,6 +60,8 @@ pub struct PlaceholderInfo {
     pub font_size: f64,
     pub rotation: f64,
     pub color: Option<[f32; 3]>,
+    #[serde(default)]
+    pub is_right_aligned: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -87,6 +89,7 @@ pub struct Placeholder {
     pub color: Option<[f32; 3]>,
     pub span_refs: Vec<SpanMatchRef>,
     pub scale_x: f64,
+    pub is_right_aligned: bool,
 }
 
 impl Placeholder {
@@ -103,6 +106,7 @@ impl Placeholder {
             font_size: self.font_size,
             rotation: self.rotation,
             color: self.color,
+            is_right_aligned: self.is_right_aligned,
         }
     }
 }
