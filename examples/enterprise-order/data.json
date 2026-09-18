@@ -1,0 +1,60 @@
+{
+  "document": {
+    "number": "INV-2026-010",
+    "status": "VERIFIED & ISSUED",
+    "security_hash": "SHA256:d4e9-91a0"
+  },
+  "client": {
+    "name": "Karim Benjelloun",
+    "company": "Maroc Fintech Consortium",
+    "email": "k.benjelloun@mfc.org.ma",
+    "location": "Casablanca Finance City",
+    "vat_id": "MA-77401928-C"
+  },
+  "order": {
+    "issue_date": "19/09/2026",
+    "due_date": "19/10/2026",
+    "po_ref": "PO-MFC-2026-881",
+    "currency": "USD ($)"
+  },
+  "items": [
+    { "id": "01", "name": "Dedicated Neural Inference Cluster", "desc": "High-throughput GPU cluster (8x H100 SXM5) with 99.99% SLA", "qty": "1 Mo", "rate": "$32,000.00", "amount": "$32,000.00" },
+    { "id": "02", "name": "Enterprise Vector Knowledge Lake", "desc": "Distributed vector storage with hybrid full-text indexing and caching", "qty": "5 TB", "rate": "$1,800.00", "amount": "$9,000.00" },
+    { "id": "03", "name": "Production Agentic Architecture Review", "desc": "Lead AI systems architect advisory and multi-agent workflow audit", "qty": "40 Hrs", "rate": "$350.00", "amount": "$14,000.00" },
+    { "id": "04", "name": "Global Anycast Edge Acceleration", "desc": "Zero-latency edge proxy routing across 32 regional points of presence", "qty": "1 Mo", "rate": "$4,500.00", "amount": "$4,500.00" },
+    { "id": "05", "name": "Private Fine-Tuning Pipeline & Guardrails", "desc": "Automated RLHF alignment framework and adversarial safety filtering", "qty": "1 Eng", "rate": "$12,500.00", "amount": "$12,500.00" },
+    { "id": "06", "name": "Real-Time Multi-Modal Voice Gateway", "desc": "Sub-200ms bidirectional audio synthesis and streaming speech models", "qty": "1 Mo", "rate": "$6,800.00", "amount": "$6,800.00" },
+    { "id": "07", "name": "High-Availability Disaster Recovery Standby", "desc": "Cold standby replication in Frankfurt region with 1-click active failover", "qty": "1 Mo", "rate": "$5,400.00", "amount": "$5,400.00" },
+    { "id": "08", "name": "SOC-2 Type II Compliance & Audit Toolkit", "desc": "Continuous automated security posture assessment and tamper audit logs", "qty": "1 Pkg", "rate": "$7,500.00", "amount": "$7,500.00" },
+    { "id": "09", "name": "24/7 Dedicated Enterprise TAM Advisory", "desc": "Assigned technical account manager with guaranteed 15-min response time", "qty": "1 Mo", "rate": "$4,200.00", "amount": "$4,200.00" },
+    { "id": "10", "name": "Secure On-Premise Gateway Appliance", "desc": "Hardware security module (HSM) integrated key management service", "qty": "2 Units", "rate": "$3,600.00", "amount": "$7,200.00" }
+  ],
+  "deliverables": [
+    "1. Complete dedicated neural cluster deployed with automated fault tolerance across 3 data centers.",
+    "2. Sub-15ms P99 embedding search latency validated under 5,000 QPS load tests.",
+    "3. Automated real-time guardrail system preventing prompt injection and data exfiltration.",
+    "4. Full disaster recovery cold standby synchronized with 1-click failover capability.",
+    "5. SOC-2 Type II compliance audit reports and continuous cryptographic audit logs."
+  ],
+  "financials": {
+    "subtotal": "$103,100.00",
+    "discount": "-$10,310.00",
+    "tax": "$4,639.50",
+    "total": "$97,429.50"
+  },
+  "payment": {
+    "account": "NOVA-GLOBAL-TREASURY",
+    "bank": "Attijariwafa Bank Corporate",
+    "iban": "MA64 0117 8000 0012 3456 7890 1234",
+    "swift": "BCMAMAMC",
+    "terms": "Net 30 Days",
+    "contact_email": "treasury@novatech.io"
+  },
+  "terms": [
+    "1. All software licenses, proprietary neural models, and custom artifacts are delivered with full commercial rights.",
+    "2. Service uptime guarantees (99.99% availability) are governed by Master Enterprise Agreement #MEA-2026-NOVA.",
+    "3. Late settlements beyond the agreed 30 business days are subject to standard 1.5% statutory monthly interest.",
+    "4. Governed by the commercial laws of the Kingdom of Morocco; disputes subject to Casablanca International Arbitration Center.",
+    "5. Cryptographic signature and timestamp embedded in this document are legally binding under national electronic commerce law."
+  ]
+}

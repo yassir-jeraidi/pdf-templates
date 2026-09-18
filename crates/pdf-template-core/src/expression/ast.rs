@@ -67,16 +67,33 @@ impl<'a> ExpressionParser<'a> {
                 Some('[') => {
                     self.pos += 1;
                     self.skip_whitespace();
-                    let idx = self.parse_integer()?;
-                    self.skip_whitespace();
                     if self.peek() == Some(']') {
                         self.pos += 1;
-                        primary = Expr::Index(Box::new(primary), idx);
+                        primary = Expr::Index(Box::new(primary), 0);
+                    } else if self.peek() == Some('*') {
+                        self.pos += 1;
+                        self.skip_whitespace();
+                        if self.peek() == Some(']') {
+                            self.pos += 1;
+                            primary = Expr::Index(Box::new(primary), 0);
+                        } else {
+                            return Err(PdfTemplateError::InvalidExpressionError {
+                                expression: self.input.to_string(),
+                                message: "Expected ']' after [*]".to_string(),
+                            });
+                        }
                     } else {
-                        return Err(PdfTemplateError::InvalidExpressionError {
-                            expression: self.input.to_string(),
-                            message: "Expected ']' after array index".to_string(),
-                        });
+                        let idx = self.parse_integer()?;
+                        self.skip_whitespace();
+                        if self.peek() == Some(']') {
+                            self.pos += 1;
+                            primary = Expr::Index(Box::new(primary), idx);
+                        } else {
+                            return Err(PdfTemplateError::InvalidExpressionError {
+                                expression: self.input.to_string(),
+                                message: "Expected ']' after array index".to_string(),
+                            });
+                        }
                     }
                 }
                 _ => break,
@@ -239,9 +256,15 @@ pub fn evaluate_expr(
                 obj.get(prop).cloned()
             } else if let Some(arr) = target_val.as_array() {
                 if let Ok(idx) = prop.parse::<usize>() {
-                    arr.get(idx).cloned()
+                    if idx < arr.len() {
+                        arr.get(idx).cloned()
+                    } else {
+                        Some(Value::String("".to_string()))
+                    }
+                } else if !arr.is_empty() {
+                    arr[0].as_object().and_then(|o| o.get(prop).cloned())
                 } else {
-                    None
+                    Some(Value::String("".to_string()))
                 }
             } else {
                 None
@@ -250,7 +273,11 @@ pub fn evaluate_expr(
         Expr::Index(target, idx) => {
             let target_val = evaluate_expr(target, data, helpers)?;
             if let Some(arr) = target_val.as_array() {
-                arr.get(*idx).cloned()
+                if *idx < arr.len() {
+                    arr.get(*idx).cloned()
+                } else {
+                    Some(Value::String("".to_string()))
+                }
             } else {
                 None
             }

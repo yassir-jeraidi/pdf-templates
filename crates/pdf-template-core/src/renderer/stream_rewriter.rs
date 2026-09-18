@@ -10,6 +10,17 @@ pub struct ReplacementTask {
     pub layout: ResolvedLayout,
 }
 
+#[derive(Debug, Clone)]
+pub struct BackgroundDecoration {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub fill_color: Option<[f32; 3]>,
+    pub border_color: Option<[f32; 3]>,
+    pub border_width: f64,
+}
+
 pub struct StreamRewriter<'a> {
     doc: &'a mut Document,
     page_id: ObjectId,
@@ -26,7 +37,15 @@ impl<'a> StreamRewriter<'a> {
     }
 
     pub fn apply_replacements(&mut self, tasks: &[ReplacementTask]) -> Result<()> {
-        if tasks.is_empty() {
+        self.apply_replacements_with_decorations(tasks, &[])
+    }
+
+    pub fn apply_replacements_with_decorations(
+        &mut self,
+        tasks: &[ReplacementTask],
+        decorations: &[BackgroundDecoration],
+    ) -> Result<()> {
+        if tasks.is_empty() && decorations.is_empty() {
             return Ok(());
         }
 
@@ -213,6 +232,43 @@ impl<'a> StreamRewriter<'a> {
         content.operations.insert(0, Operation::new("q", vec![]));
         let q_to_pop = (depth + 1).max(1);
         for _ in 0..q_to_pop {
+            content.operations.push(Operation::new("Q", vec![]));
+        }
+
+        // 4b. Append background decorations (zebra stripes, borders)
+        for dec in decorations {
+            content.operations.push(Operation::new("q", vec![]));
+            if let Some(fill) = dec.fill_color {
+                content.operations.push(Operation::new("rg", vec![
+                    Object::Real(fill[0]),
+                    Object::Real(fill[1]),
+                    Object::Real(fill[2]),
+                ]));
+                content.operations.push(Operation::new("re", vec![
+                    Object::Real(dec.x as f32),
+                    Object::Real(dec.y as f32),
+                    Object::Real(dec.width as f32),
+                    Object::Real(dec.height as f32),
+                ]));
+                content.operations.push(Operation::new("f", vec![]));
+            }
+            if let Some(border) = dec.border_color {
+                content.operations.push(Operation::new("w", vec![Object::Real(dec.border_width as f32)]));
+                content.operations.push(Operation::new("RG", vec![
+                    Object::Real(border[0]),
+                    Object::Real(border[1]),
+                    Object::Real(border[2]),
+                ]));
+                content.operations.push(Operation::new("m", vec![
+                    Object::Real(dec.x as f32),
+                    Object::Real(dec.y as f32),
+                ]));
+                content.operations.push(Operation::new("l", vec![
+                    Object::Real((dec.x + dec.width) as f32),
+                    Object::Real(dec.y as f32),
+                ]));
+                content.operations.push(Operation::new("S", vec![]));
+            }
             content.operations.push(Operation::new("Q", vec![]));
         }
 

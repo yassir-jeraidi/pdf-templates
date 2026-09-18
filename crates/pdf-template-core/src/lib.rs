@@ -19,7 +19,54 @@ pub use parser::{FontInfo, PageParser};
 pub use detector::SpanMatcher;
 pub use expression::{ExpressionParser, evaluate_expr, value_to_string};
 pub use layout::{LayoutEngine, ResolvedLayout};
-pub use renderer::{StreamRewriter, ReplacementTask};
+pub use renderer::{StreamRewriter, ReplacementTask, BackgroundDecoration};
+
+fn strip_array_prefix<'a>(expr: &'a str, array_key: &str) -> Option<&'a str> {
+    if expr.starts_with(array_key) {
+        let rest = &expr[array_key.len()..];
+        if let Some(after_dot) = rest.strip_prefix('.') {
+            if let Some(after_zero) = after_dot.strip_prefix("0.") {
+                Some(after_zero)
+            } else if after_dot == "0" {
+                Some("")
+            } else {
+                Some(after_dot)
+            }
+        } else if let Some(after_bracket) = rest.strip_prefix("[]") {
+            Some(after_bracket.strip_prefix('.').unwrap_or(after_bracket))
+        } else if let Some(after_bracket) = rest.strip_prefix("[*]") {
+            Some(after_bracket.strip_prefix('.').unwrap_or(after_bracket))
+        } else if let Some(after_zero_bracket) = rest.strip_prefix("[0]") {
+            Some(after_zero_bracket.strip_prefix('.').unwrap_or(after_zero_bracket))
+        } else if rest.is_empty() {
+            Some("")
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+fn has_explicit_higher_index(expr: &str, array_key: &str) -> bool {
+    if expr.starts_with(array_key) {
+        let rest = &expr[array_key.len()..];
+        if let Some(after_dot) = rest.strip_prefix('.') {
+            if let Some(first_char) = after_dot.chars().next() {
+                if first_char >= '1' && first_char <= '9' {
+                    return true;
+                }
+            }
+        } else if let Some(after_bracket) = rest.strip_prefix('[') {
+            if let Some(first_char) = after_bracket.chars().next() {
+                if first_char >= '1' && first_char <= '9' {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
@@ -211,8 +258,157 @@ pub fn render_template(
         }
 
         let mut tasks = Vec::new();
+        let mut decorations = Vec::new();
 
-        for ph in placeholders {
+        // Check for repeating array prototype groups
+        let mut repeating_keys: Vec<(String, Vec<Value>, Vec<Placeholder>)> = Vec::new();
+        let mut handled_ph_indices = std::collections::HashSet::new();
+
+        if let Some(obj) = data.as_object() {
+            for (k, v) in obj {
+                if let Some(arr) = v.as_array() {
+                    // Check if there is any placeholder with an explicit higher index (e.g. items.1.* or items[1].*)
+                    let has_multi_rows = placeholders.iter().any(|ph| has_explicit_higher_index(&ph.expression, k));
+                    if !has_multi_rows {
+                        let proto_indices: Vec<usize> = placeholders.iter().enumerate().filter_map(|(idx, ph)| {
+                            if strip_array_prefix(&ph.expression, k).is_some() {
+                                Some(idx)
+                            } else {
+                                None
+                            }
+                        }).collect();
+
+                        if !proto_indices.is_empty() {
+                            let mut proto_phs = Vec::new();
+                            for idx in proto_indices {
+                                handled_ph_indices.insert(idx);
+                                proto_phs.push(placeholders[idx].clone());
+                            }
+                            repeating_keys.push((k.clone(), arr.clone(), proto_phs));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Process dynamic repeating rows
+        for (arr_key, arr, proto_phs) in repeating_keys {
+            if proto_phs.is_empty() {
+                continue;
+            }
+
+            let y_0 = proto_phs.iter().map(|p| p.y).fold(0.0f64, f64::max);
+            let min_y = proto_phs.iter().map(|p| p.y).fold(f64::MAX, f64::min);
+            let row_span = (y_0 - min_y).max(0.0);
+            let row_pitch = if proto_phs.len() == 1 {
+                (proto_phs[0].font_size * 2.3).max(15.0)
+            } else {
+                (row_span + 17.0).max(28.0)
+            };
+
+            let min_x = proto_phs.iter().map(|p| p.x).fold(f64::MAX, f64::min);
+            let max_x = proto_phs.iter().map(|p| p.x + p.width).fold(0.0f64, f64::max);
+            let table_left = (min_x - 8.0).max(40.0);
+            let table_width = (max_x - table_left + 15.0).min(595.28 - table_left);
+
+            let n_items = arr.len();
+            if n_items == 0 {
+                // Erase prototype text if array is empty
+                for ph in proto_phs {
+                    let font_info = parser.fonts.get(&ph.font_name).cloned().unwrap_or_default();
+                    let layout = LayoutEngine::resolve_layout(
+                        &ph.expression,
+                        "",
+                        ph.width,
+                        ph.font_size,
+                        &font_info,
+                        options.overflow,
+                        options.min_font_size,
+                    )?;
+                    tasks.push(ReplacementTask {
+                        placeholder: ph,
+                        layout,
+                    });
+                }
+                continue;
+            }
+
+            for r in 0..n_items {
+                let y_r = y_0 - (r as f64) * row_pitch;
+
+                // Add zebra background / row borders if this is a multi-column table row
+                if table_width > 200.0 && proto_phs.len() > 1 {
+                    let box_y = min_y - (r as f64) * row_pitch - 7.0;
+                    if r % 2 == 0 {
+                        decorations.push(BackgroundDecoration {
+                            x: table_left,
+                            y: box_y,
+                            width: table_width,
+                            height: row_pitch,
+                            fill_color: Some([0.97, 0.98, 0.99]),
+                            border_color: Some([0.90, 0.92, 0.94]),
+                            border_width: 0.5,
+                        });
+                    } else {
+                        decorations.push(BackgroundDecoration {
+                            x: table_left,
+                            y: box_y,
+                            width: table_width,
+                            height: 0.0,
+                            fill_color: None,
+                            border_color: Some([0.90, 0.92, 0.94]),
+                            border_width: 0.5,
+                        });
+                    }
+                }
+
+                for proto_ph in &proto_phs {
+                    let field = strip_array_prefix(&proto_ph.expression, &arr_key).unwrap_or("");
+                    let text = if field.is_empty() {
+                        value_to_string(&arr[r])
+                    } else if let Some(item_obj) = arr[r].as_object() {
+                        item_obj.get(field).map(value_to_string).unwrap_or_default()
+                    } else {
+                        value_to_string(&arr[r])
+                    };
+
+                    let font_info = parser.fonts.get(&proto_ph.font_name).cloned().unwrap_or_default();
+                    let available_width = compute_available_width(proto_ph, &spans);
+
+                    let ph_for_task = if r == 0 {
+                        proto_ph.clone()
+                    } else {
+                        let mut dynamic_ph = proto_ph.clone();
+                        dynamic_ph.expression = format!("{}.{}.{}", arr_key, r, field);
+                        dynamic_ph.y = y_r + (proto_ph.y - y_0);
+                        dynamic_ph.span_refs = Vec::new();
+                        dynamic_ph
+                    };
+
+                    let layout = LayoutEngine::resolve_layout(
+                        &ph_for_task.expression,
+                        &text,
+                        available_width,
+                        ph_for_task.font_size,
+                        &font_info,
+                        options.overflow,
+                        options.min_font_size,
+                    )?;
+
+                    tasks.push(ReplacementTask {
+                        placeholder: ph_for_task,
+                        layout,
+                    });
+                }
+            }
+        }
+
+        // Process all remaining regular placeholders
+        for (idx, ph) in placeholders.into_iter().enumerate() {
+            if handled_ph_indices.contains(&idx) {
+                continue;
+            }
+
             let text = if let Some(val) = helpers.and_then(|h| h.get(&ph.expression)) {
                 val.clone()
             } else {
@@ -247,7 +443,7 @@ pub fn render_template(
         }
 
         let mut rewriter = StreamRewriter::new(&mut doc, *page_id, page_idx);
-        rewriter.apply_replacements(&tasks)?;
+        rewriter.apply_replacements_with_decorations(&tasks, &decorations)?;
     }
 
     if total_spans == 0 {
