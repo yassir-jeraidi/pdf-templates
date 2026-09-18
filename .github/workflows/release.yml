@@ -98,7 +98,10 @@ jobs:
 
       - name: Publish to npm
         run: |
-          cd packages/node
-          npm publish --access public
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > packages/node/.npmrc
+          npm whoami
+          npm publish --workspace=@yassir-jeraidi/pdf-templates --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
