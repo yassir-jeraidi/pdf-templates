@@ -87,8 +87,53 @@ impl<'a> StreamRewriter<'a> {
             }
         }
 
-        // 4. Ensure standard font resource is registered on the page
-        let fallback_font_name = self.ensure_fallback_font()?;
+        // 3b. If a placeholder was followed by text in the same BT block (e.g. {{city}}, where ',' follows),
+        // shift the succeeding Td operator so the trailing text follows the rendered replacement text
+        for task in tasks {
+            let ph = &task.placeholder;
+            let layout = &task.layout;
+            let delta_w = layout.rendered_width - ph.width;
+            if delta_w.abs() > 0.1 && ph.scale_x > 1e-6 {
+                if let Some(last_ref) = ph.span_refs.last() {
+                    let last_op = last_ref.op_index;
+                    for i in (last_op + 1)..content.operations.len() {
+                        let op = &mut content.operations[i];
+                        if op.operator == "ET" || op.operator == "BT" || op.operator == "Tm" {
+                            break;
+                        }
+                        if op.operator == "Td" || op.operator == "TD" {
+                            let delta_w_text = delta_w / ph.scale_x;
+                            if let Some(operand) = op.operands.get_mut(0) {
+                                match operand {
+                                    Object::Real(dx) => *dx += delta_w_text as f32,
+                                    Object::Integer(dx) => *operand = Object::Real(*dx as f32 + delta_w_text as f32),
+                                    _ => {}
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Reset graphics state to default user space
+        // PDF content streams may have top-level `cm` transformations (e.g. 0.24 ... cm)
+        // or unclosed `q` states. We wrap the entire original stream in `q ... Q` so that
+        // our appended replacement operations run in pristine default user space (identity CTM).
+        let mut depth: i32 = 0;
+        for op in &content.operations {
+            if op.operator == "q" {
+                depth += 1;
+            } else if op.operator == "Q" {
+                depth -= 1;
+            }
+        }
+        content.operations.insert(0, Operation::new("q", vec![]));
+        let q_to_pop = (depth + 1).max(1);
+        for _ in 0..q_to_pop {
+            content.operations.push(Operation::new("Q", vec![]));
+        }
 
         // 5. Append replacement text operations
         for task in tasks {
@@ -98,7 +143,14 @@ impl<'a> StreamRewriter<'a> {
             let font_to_use = if self.has_font_resource(&ph.font_name) && self.is_font_safe_for_direct_ascii(&ph.font_name) {
                 ph.font_name.clone()
             } else {
-                fallback_font_name.clone()
+                let (is_bold, is_italic) = self.get_font_style(&ph.font_name);
+                let variant = match (is_bold, is_italic) {
+                    (true, true) => "Helvetica-BoldOblique",
+                    (true, false) => "Helvetica-Bold",
+                    (false, true) => "Helvetica-Oblique",
+                    (false, false) => "Helvetica",
+                };
+                self.ensure_fallback_font(variant)?
             };
 
             // Begin isolated graphics state
@@ -289,17 +341,102 @@ impl<'a> StreamRewriter<'a> {
         false
     }
 
-    fn ensure_fallback_font(&mut self) -> Result<String> {
-        let font_key = "F_PTE_Helvetica";
-        if self.has_font_resource(font_key) {
-            return Ok(font_key.to_string());
+    fn get_font_style(&self, font_name: &str) -> (bool, bool) {
+        let mut is_bold = false;
+        let mut is_italic = false;
+        if let Ok(page_dict) = self.doc.get_dictionary(self.page_id) {
+            if let Ok(res) = page_dict.get(b"Resources") {
+                let res_dict = match res {
+                    Object::Dictionary(d) => Some(d),
+                    Object::Reference(id) => match self.doc.get_object(*id) {
+                        Ok(Object::Dictionary(d)) => Some(d),
+                        Ok(Object::Stream(s)) => Some(&s.dict),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some(r) = res_dict {
+                    if let Ok(fonts) = r.get(b"Font") {
+                        let fonts_dict = match fonts {
+                            Object::Dictionary(d) => Some(d),
+                            Object::Reference(id) => match self.doc.get_object(*id) {
+                                Ok(Object::Dictionary(d)) => Some(d),
+                                Ok(Object::Stream(s)) => Some(&s.dict),
+                                _ => None,
+                            },
+                            _ => None,
+                        };
+                        if let Some(f) = fonts_dict {
+                            if let Ok(font_obj) = f.get(font_name.as_bytes()) {
+                                let f_dict = match font_obj {
+                                    Object::Dictionary(d) => Some(d),
+                                    Object::Reference(id) => match self.doc.get_object(*id) {
+                                        Ok(Object::Dictionary(d)) => Some(d),
+                                        _ => None,
+                                    },
+                                    _ => None,
+                                };
+                                if let Some(fd) = f_dict {
+                                    if let Ok(bf) = fd.get(b"BaseFont") {
+                                        if let Ok(name_bytes) = bf.as_name() {
+                                            let name = String::from_utf8_lossy(name_bytes);
+                                            if name.contains("Bold") || name.contains("bold") || name.contains("Black") || name.contains("Heavy") {
+                                                is_bold = true;
+                                            }
+                                            if name.contains("Italic") || name.contains("italic") || name.contains("Oblique") {
+                                                is_italic = true;
+                                            }
+                                        }
+                                    }
+                                    if let Ok(desc_obj) = fd.get(b"FontDescriptor") {
+                                        let desc_dict = match desc_obj {
+                                            Object::Dictionary(d) => Some(d),
+                                            Object::Reference(id) => match self.doc.get_object(*id) {
+                                                Ok(Object::Dictionary(d)) => Some(d),
+                                                _ => None,
+                                            },
+                                            _ => None,
+                                        };
+                                        if let Some(dd) = desc_dict {
+                                            if let Ok(fn_obj) = dd.get(b"FontName") {
+                                                if let Ok(name_bytes) = fn_obj.as_name() {
+                                                    let name = String::from_utf8_lossy(name_bytes);
+                                                    if name.contains("Bold") || name.contains("bold") || name.contains("Black") || name.contains("Heavy") {
+                                                        is_bold = true;
+                                                    }
+                                                    if name.contains("Italic") || name.contains("italic") || name.contains("Oblique") {
+                                                        is_italic = true;
+                                                    }
+                                                }
+                                            }
+                                            if let Ok(fw) = dd.get(b"FontWeight") {
+                                                if let Some(w) = crate::parser::font::obj_to_f64(fw) {
+                                                    if w >= 600.0 { is_bold = true; }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        (is_bold, is_italic)
+    }
+
+    fn ensure_fallback_font(&mut self, variant: &str) -> Result<String> {
+        let font_key = format!("F_PTE_{}", variant.replace('-', "_"));
+        if self.has_font_resource(&font_key) {
+            return Ok(font_key);
         }
 
-        // Create standard Helvetica Type 1 font object
+        // Create standard Type 1 font object
         let mut font_dict = Dictionary::new();
         font_dict.set("Type", Object::Name(b"Font".to_vec()));
         font_dict.set("Subtype", Object::Name(b"Type1".to_vec()));
-        font_dict.set("BaseFont", Object::Name(b"Helvetica".to_vec()));
+        font_dict.set("BaseFont", Object::Name(variant.as_bytes().to_vec()));
         font_dict.set("Encoding", Object::Name(b"WinAnsiEncoding".to_vec()));
 
         let font_id = self.doc.add_object(Object::Dictionary(font_dict));
@@ -323,13 +460,13 @@ impl<'a> StreamRewriter<'a> {
 
         if let Some(res_id) = resources_id {
             if let Ok(res_dict) = self.doc.get_dictionary_mut(res_id) {
-                Self::add_font_to_resources(res_dict, font_key, font_id);
+                Self::add_font_to_resources(res_dict, &font_key, font_id);
             }
         } else if let Ok(Object::Dictionary(res_dict)) = page_dict.get_mut(b"Resources") {
-            Self::add_font_to_resources(res_dict, font_key, font_id);
+            Self::add_font_to_resources(res_dict, &font_key, font_id);
         }
 
-        Ok(font_key.to_string())
+        Ok(font_key)
     }
 
     fn add_font_to_resources(res_dict: &mut Dictionary, font_key: &str, font_id: ObjectId) {

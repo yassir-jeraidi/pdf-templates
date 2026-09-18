@@ -6,13 +6,13 @@ use crate::parser::encoding::decode_pdf_string;
 use crate::parser::font::FontInfo;
 
 #[derive(Debug, Clone)]
-struct Matrix {
-    a: f64,
-    b: f64,
-    c: f64,
-    d: f64,
-    e: f64,
-    f: f64,
+pub struct Matrix {
+    pub a: f64,
+    pub b: f64,
+    pub c: f64,
+    pub d: f64,
+    pub e: f64,
+    pub f: f64,
 }
 
 impl Default for Matrix {
@@ -22,7 +22,7 @@ impl Default for Matrix {
 }
 
 impl Matrix {
-    fn identity() -> Self {
+    pub fn identity() -> Self {
         Self {
             a: 1.0,
             b: 0.0,
@@ -33,7 +33,7 @@ impl Matrix {
         }
     }
 
-    fn from_array(arr: &[f64]) -> Self {
+    pub fn from_array(arr: &[f64]) -> Self {
         if arr.len() >= 6 {
             Self {
                 a: arr[0],
@@ -49,7 +49,7 @@ impl Matrix {
     }
 
     // Multiply: self * other
-    fn multiply(&self, o: &Matrix) -> Matrix {
+    pub fn multiply(&self, o: &Matrix) -> Matrix {
         Matrix {
             a: self.a * o.a + self.b * o.c,
             b: self.a * o.b + self.b * o.d,
@@ -431,9 +431,17 @@ impl<'a> PageParser<'a> {
         let (start_x, start_y) = (effective_matrix.e, effective_matrix.f);
         let rotation = effective_matrix.rotation_degrees();
 
+        let scale_x = (effective_matrix.a * effective_matrix.a + effective_matrix.b * effective_matrix.b).sqrt();
+        let scale_y = (effective_matrix.c * effective_matrix.c + effective_matrix.d * effective_matrix.d).sqrt();
+        let scale_x = if scale_x > 1e-6 { scale_x } else { 1.0 };
+        let scale_y = if scale_y > 1e-6 { scale_y } else { 1.0 };
+
+        let user_font_size = font_size * scale_y;
+
         let mut char_widths = Vec::new();
         let mut char_byte_ranges = Vec::new();
-        let mut total_run_width = 0.0;
+        let mut total_run_width_user = 0.0;
+        let mut total_text_space_advance = 0.0;
 
         let mut byte_idx = 0;
         for c in decoded.chars() {
@@ -447,11 +455,13 @@ impl<'a> PageParser<'a> {
                 .unwrap_or_else(|| crate::parser::font::get_standard_helvetica_advance(c));
 
             let extra_space = if c == ' ' { word_spacing } else { 0.0 };
-            let w = ((glyph_advance / 1000.0) * font_size + char_spacing + extra_space)
+            let text_w = ((glyph_advance / 1000.0) * font_size + char_spacing + extra_space)
                 * (horizontal_scaling / 100.0);
+            let user_w = text_w * scale_x;
 
-            char_widths.push(w);
-            total_run_width += w;
+            char_widths.push(user_w);
+            total_run_width_user += user_w;
+            total_text_space_advance += text_w;
         }
 
         spans.push(TextSpan {
@@ -460,24 +470,25 @@ impl<'a> PageParser<'a> {
             page: self.page_index,
             x: start_x,
             y: start_y,
-            width: total_run_width,
-            height: font_size,
+            width: total_run_width_user,
+            height: user_font_size,
             font_name: font_name.to_string(),
-            font_size,
+            font_size: user_font_size,
             rotation,
             color: current_gstate.color,
             op_index,
             sub_index,
             char_widths,
             char_byte_ranges,
+            scale_x,
         });
 
-        // Advance text matrix by total_run_width in text space
-        *text_matrix = text_matrix.translate(total_run_width, 0.0);
+        // Advance text matrix by text space advance
+        *text_matrix = text_matrix.translate(total_text_space_advance, 0.0);
     }
 }
 
-fn extract_f64_args(operands: &[Object]) -> Vec<f64> {
+pub fn extract_f64_args(operands: &[Object]) -> Vec<f64> {
     operands
         .iter()
         .filter_map(crate::parser::font::obj_to_f64)

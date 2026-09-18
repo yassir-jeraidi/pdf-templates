@@ -14,6 +14,7 @@ pub struct FontInfo {
     pub descent: f64,
     pub to_unicode: Option<ToUnicodeCMap>,
     pub encoding: Option<String>,
+    pub is_subset: bool,
 }
 
 impl Default for FontInfo {
@@ -30,6 +31,7 @@ impl Default for FontInfo {
             descent: -200.0,
             to_unicode: None,
             encoding: None,
+            is_subset: false,
         }
     }
 }
@@ -110,18 +112,24 @@ impl FontInfo {
             }
         }
 
+        if info.subtype == "Type3" || info.base_font.contains('+') {
+            info.is_subset = true;
+        }
+
         info
     }
 
     /// Measures the advance width of a character in glyph space (per 1000 units).
     pub fn get_glyph_advance(&self, c: char, byte_code: Option<u8>) -> f64 {
-        // 1. Try explicit Widths array
-        if let Some(b) = byte_code {
-            let code = b as u32;
-            if code >= self.first_char && code <= self.last_char && !self.widths.is_empty() {
-                let idx = (code - self.first_char) as usize;
-                if idx < self.widths.len() {
-                    return self.widths[idx];
+        // 1. Try explicit Widths array ONLY for non-subset fonts
+        if !self.is_subset && !self.widths.is_empty() {
+            if let Some(b) = byte_code {
+                let code = b as u32;
+                if code >= self.first_char && code <= self.last_char {
+                    let idx = (code - self.first_char) as usize;
+                    if idx < self.widths.len() {
+                        return self.widths[idx];
+                    }
                 }
             }
         }

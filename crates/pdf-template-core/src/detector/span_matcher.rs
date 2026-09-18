@@ -70,9 +70,12 @@ impl SpanMatcher {
                     let raw_expr = &line_text[abs_open..abs_close];
                     let inner_expr = line_text[after_open..after_open + close_idx].trim().to_string();
 
-                    if !inner_expr.is_empty() && abs_close <= char_map.len() {
-                        let start_char_info = &char_map[abs_open];
-                        let end_char_info = &char_map[abs_close - 1];
+                    let char_start = line_text[..abs_open].chars().count();
+                    let char_end = line_text[..abs_close].chars().count();
+
+                    if !inner_expr.is_empty() && char_end <= char_map.len() && char_start < char_end {
+                        let start_char_info = &char_map[char_start];
+                        let end_char_info = &char_map[char_end - 1];
 
                         let start_span = &group[start_char_info.span_idx];
                         let end_span = &group[end_char_info.span_idx];
@@ -134,6 +137,7 @@ impl SpanMatcher {
                             rotation: start_span.rotation,
                             color: start_span.color,
                             span_refs,
+                            scale_x: start_span.scale_x,
                         });
                     }
 
@@ -147,7 +151,7 @@ impl SpanMatcher {
         placeholders
     }
 
-    fn cluster_into_lines<'a>(&self, spans: &'a [TextSpan]) -> Vec<Vec<&'a TextSpan>> {
+    pub fn cluster_into_lines<'a>(&self, spans: &'a [TextSpan]) -> Vec<Vec<&'a TextSpan>> {
         let mut groups: Vec<Vec<&'a TextSpan>> = Vec::new();
 
         for span in spans {

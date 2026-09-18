@@ -86,6 +86,7 @@ pub struct Placeholder {
     pub rotation: f64,
     pub color: Option<[f32; 3]>,
     pub span_refs: Vec<SpanMatchRef>,
+    pub scale_x: f64,
 }
 
 impl Placeholder {
@@ -123,6 +124,7 @@ pub struct TextSpan {
     pub sub_index: Option<usize>,
     pub char_widths: Vec<f64>,
     pub char_byte_ranges: Vec<(usize, usize)>,
+    pub scale_x: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
