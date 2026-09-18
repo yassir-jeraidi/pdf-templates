@@ -1,6 +1,6 @@
 {
   "name": "@yassir-jeraidi/pdf-templates",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Production-ready PDF template engine for Node.js and TypeScript",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
