@@ -19,7 +19,7 @@ jobs:
             build: cargo build --release --target aarch64-apple-darwin -p pdf-template-napi
             artifact: target/aarch64-apple-darwin/release/libpdf_template_napi.dylib
             dest: pdf-template-napi.darwin-arm64.node
-          - host: macos-13
+          - host: macos-latest
             target: x86_64-apple-darwin
             build: cargo build --release --target x86_64-apple-darwin -p pdf-template-napi
             artifact: target/x86_64-apple-darwin/release/libpdf_template_napi.dylib
@@ -42,6 +42,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.settings.target }}
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.settings.target }}
 
       - name: Build Native Binary
         run: ${{ matrix.settings.build }}
@@ -81,6 +86,9 @@ jobs:
         run: |
           mkdir -p packages/node/binaries
           find artifacts -type f -name "*.node" -exec cp {} packages/node/binaries/ \;
+          if [ -f packages/node/binaries/pdf-template-napi.linux-x64.node ]; then
+            cp packages/node/binaries/pdf-template-napi.linux-x64.node packages/node/pdf-template-napi.node
+          fi
           ls -la packages/node/binaries/
 
       - name: Install dependencies & Build TypeScript
