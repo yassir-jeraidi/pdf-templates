@@ -1,0 +1,96 @@
+name: Release & Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build - ${{ matrix.settings.target }}
+    runs-on: ${{ matrix.settings.host }}
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - host: macos-latest
+            target: aarch64-apple-darwin
+            build: cargo build --release --target aarch64-apple-darwin -p pdf-template-napi
+            artifact: target/aarch64-apple-darwin/release/libpdf_template_napi.dylib
+            dest: pdf-template-napi.darwin-arm64.node
+          - host: macos-13
+            target: x86_64-apple-darwin
+            build: cargo build --release --target x86_64-apple-darwin -p pdf-template-napi
+            artifact: target/x86_64-apple-darwin/release/libpdf_template_napi.dylib
+            dest: pdf-template-napi.darwin-x64.node
+          - host: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            build: cargo build --release --target x86_64-unknown-linux-gnu -p pdf-template-napi
+            artifact: target/x86_64-unknown-linux-gnu/release/libpdf_template_napi.so
+            dest: pdf-template-napi.linux-x64.node
+          - host: windows-latest
+            target: x86_64-pc-windows-msvc
+            build: cargo build --release --target x86_64-pc-windows-msvc -p pdf-template-napi
+            artifact: target/x86_64-pc-windows-msvc/release/pdf_template_napi.dll
+            dest: pdf-template-napi.win32-x64.node
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.settings.target }}
+
+      - name: Build Native Binary
+        run: ${{ matrix.settings.build }}
+
+      - name: Copy & Rename Artifact
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          cp ${{ matrix.settings.artifact }} artifacts/${{ matrix.settings.dest }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bindings-${{ matrix.settings.target }}
+          path: artifacts/*
+
+  publish:
+    name: Publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Assemble Platform Binaries
+        shell: bash
+        run: |
+          mkdir -p packages/node/binaries
+          find artifacts -type f -name "*.node" -exec cp {} packages/node/binaries/ \;
+          ls -la packages/node/binaries/
+
+      - name: Install dependencies & Build TypeScript
+        run: |
+          npm install
+          npm run build --workspace=pdf-templates
+
+      - name: Publish to npm
+        run: |
+          cd packages/node
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
