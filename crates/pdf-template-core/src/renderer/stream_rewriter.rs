@@ -276,7 +276,7 @@ impl<'a> StreamRewriter<'a> {
         match existing_contents {
             Ok(Object::Reference(old_id)) => {
                 if let Some(Object::Stream(old_stream)) = self.doc.objects.get_mut(&old_id) {
-                    old_stream.set_content(new_content_bytes);
+                    old_stream.set_plain_content(new_content_bytes);
                     return Ok(());
                 }
             }
@@ -293,7 +293,7 @@ impl<'a> StreamRewriter<'a> {
                 }
                 if let Some(first_id) = first_id {
                     if let Some(Object::Stream(first_stream)) = self.doc.objects.get_mut(&first_id) {
-                        first_stream.set_content(new_content_bytes);
+                        first_stream.set_plain_content(new_content_bytes);
                         let page_dict = self.doc.get_dictionary_mut(self.page_id).map_err(|e| {
                             PdfTemplateError::RenderError {
                                 message: format!("Failed to access page dict: {}", e),
