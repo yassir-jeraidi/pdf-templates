@@ -26,6 +26,9 @@
   ],
   "author": "Yassir Jeraidi",
   "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
   "devDependencies": {
     "pdfjs-dist": "^6.3.289"
   }
