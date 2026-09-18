@@ -1,8 +1,8 @@
-# pdf-template-engine
+# @yassir-jeraidi/pdf-templates
 
 > A high-performance, production-ready PDF template engine for Node.js and TypeScript, powered by a native Rust core.
 
-Like `docx-templates`, but for **PDFs**. Create your document visually in any software (Figma, Microsoft Word, LibreOffice, Adobe Acrobat, InDesign), insert placeholders like `{{customer.name}}`, export to PDF, and let **pdf-template-engine** render dynamic variables directly into the PDF while **100% preserving vector graphics, backgrounds, fonts, metadata, images, and layout**.
+Like `docx-templates`, but for **PDFs**. Create your document visually in any software (Figma, Microsoft Word, LibreOffice, Adobe Acrobat, InDesign), insert placeholders like `{{customer.name}}`, export to PDF, and let **pdf-templates** render dynamic variables directly into the PDF while **100% preserving vector graphics, backgrounds, fonts, metadata, images, and layout**.
 
 ```
 Existing PDF (+ Placeholders) + JSON/JS Data ➔ Pixel-Preserved Output PDF
@@ -19,17 +19,17 @@ Existing PDF (+ Placeholders) + JSON/JS Data ➔ Pixel-Preserved Output PDF
 * **Safe Expression Engine:** Evaluates nested properties (`customer.address.city`), array items (`items[0].price`), and registered helper functions without unrestricted `eval()`.
 * **Smart Text Overflow Handling:** Automatic font scaling (`shrink`), clipping (`clip`), multi-line wrapping (`wrap`), or strict exceptions (`error`).
 * **Multi-Page Native:** Process multi-page agreements, invoices, certificates, and reports across hundreds of pages effortlessly.
-* **CLI Included:** Inspect, validate, and render directly from the command line with `npx pdf-template`.
+* **CLI Included:** Inspect, validate, and render directly from the command line with `npx pdf-templates`.
 
 ---
 
 ## Installation
 
 ```bash
-npm install pdf-template-engine
+npm install @yassir-jeraidi/pdf-templates
 ```
 
-*Pre-requisites for local compilation from source:* Rust toolchain (`cargo`, `rustc`) and Node.js `>= 18`.
+*Pre-requisites:* Node.js `>= 22`.
 
 ---
 
@@ -38,7 +38,7 @@ npm install pdf-template-engine
 ### Basic Usage
 
 ```typescript
-import { renderPdfTemplate } from "pdf-template-engine";
+import { renderPdfTemplate } from "@yassir-jeraidi/pdf-templates";
 
 const output = await renderPdfTemplate("./invoice-template.pdf", {
   customer: {

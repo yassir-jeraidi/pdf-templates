@@ -9,9 +9,9 @@
   "scripts": {
     "build:rust": "cargo build --release -p pdf-template-napi",
     "build:rust:debug": "cargo build -p pdf-template-napi",
-    "build": "npm run build --workspace=pdf-templates",
+    "build": "npm run build --workspace=@yassir-jeraidi/pdf-templates",
     "test:rust": "cargo test --workspace",
-    "test:node": "npm run test --workspace=pdf-templates",
+    "test:node": "npm run test --workspace=@yassir-jeraidi/pdf-templates",
     "test": "npm run test:rust && npm run test:node"
   },
   "keywords": [

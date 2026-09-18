@@ -94,7 +94,7 @@ jobs:
       - name: Install dependencies & Build TypeScript
         run: |
           npm install
-          npm run build --workspace=pdf-templates
+          npm run build --workspace=@yassir-jeraidi/pdf-templates
 
       - name: Publish to npm
         run: |
