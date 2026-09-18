@@ -237,6 +237,12 @@ pub fn evaluate_expr(
             let target_val = evaluate_expr(target, data, helpers)?;
             if let Some(obj) = target_val.as_object() {
                 obj.get(prop).cloned()
+            } else if let Some(arr) = target_val.as_array() {
+                if let Ok(idx) = prop.parse::<usize>() {
+                    arr.get(idx).cloned()
+                } else {
+                    None
+                }
             } else {
                 None
             }

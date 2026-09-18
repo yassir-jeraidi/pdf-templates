@@ -95,7 +95,7 @@ impl<'a> StreamRewriter<'a> {
             let ph = &task.placeholder;
             let layout = &task.layout;
 
-            let font_to_use = if self.has_font_resource(&ph.font_name) {
+            let font_to_use = if self.has_font_resource(&ph.font_name) && self.is_font_safe_for_direct_ascii(&ph.font_name) {
                 ph.font_name.clone()
             } else {
                 fallback_font_name.clone()
@@ -191,18 +191,96 @@ impl<'a> StreamRewriter<'a> {
             if let Ok(res) = page_dict.get(b"Resources") {
                 let res_dict = match res {
                     Object::Dictionary(d) => Some(d),
-                    Object::Reference(id) => self.doc.get_dictionary(*id).ok(),
+                    Object::Reference(id) => match self.doc.get_object(*id) {
+                        Ok(Object::Dictionary(d)) => Some(d),
+                        Ok(Object::Stream(s)) => Some(&s.dict),
+                        _ => None,
+                    },
                     _ => None,
                 };
                 if let Some(r) = res_dict {
                     if let Ok(fonts) = r.get(b"Font") {
                         let fonts_dict = match fonts {
                             Object::Dictionary(d) => Some(d),
-                            Object::Reference(id) => self.doc.get_dictionary(*id).ok(),
+                            Object::Reference(id) => match self.doc.get_object(*id) {
+                                Ok(Object::Dictionary(d)) => Some(d),
+                                Ok(Object::Stream(s)) => Some(&s.dict),
+                                _ => None,
+                            },
                             _ => None,
                         };
                         if let Some(f) = fonts_dict {
                             return f.has(font_name.as_bytes());
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    fn is_font_safe_for_direct_ascii(&self, font_name: &str) -> bool {
+        if let Ok(page_dict) = self.doc.get_dictionary(self.page_id) {
+            if let Ok(res) = page_dict.get(b"Resources") {
+                let res_dict = match res {
+                    Object::Dictionary(d) => Some(d),
+                    Object::Reference(id) => match self.doc.get_object(*id) {
+                        Ok(Object::Dictionary(d)) => Some(d),
+                        Ok(Object::Stream(s)) => Some(&s.dict),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some(r) = res_dict {
+                    if let Ok(fonts) = r.get(b"Font") {
+                        let fonts_dict = match fonts {
+                            Object::Dictionary(d) => Some(d),
+                            Object::Reference(id) => match self.doc.get_object(*id) {
+                                Ok(Object::Dictionary(d)) => Some(d),
+                                Ok(Object::Stream(s)) => Some(&s.dict),
+                                _ => None,
+                            },
+                            _ => None,
+                        };
+                        if let Some(f) = fonts_dict {
+                            if let Ok(font_obj) = f.get(font_name.as_bytes()) {
+                                let f_dict = match font_obj {
+                                    Object::Dictionary(d) => Some(d),
+                                    Object::Reference(id) => match self.doc.get_object(*id) {
+                                        Ok(Object::Dictionary(d)) => Some(d),
+                                        Ok(Object::Stream(s)) => Some(&s.dict),
+                                        _ => None,
+                                    },
+                                    _ => None,
+                                };
+                                if let Some(fd) = f_dict {
+                                    // If font has a ToUnicode mapping, it is almost certainly a subset font with custom glyph IDs
+                                    if fd.has(b"ToUnicode") {
+                                        return false;
+                                    }
+                                    if let Ok(st) = fd.get(b"Subtype") {
+                                        if let Object::Name(name) = st {
+                                            if name == b"Type0" || name == b"Type3" {
+                                                return false;
+                                            }
+                                        }
+                                    }
+                                    if let Ok(enc) = fd.get(b"Encoding") {
+                                        if let Object::Name(name) = enc {
+                                            return name == b"WinAnsiEncoding" || name == b"StandardEncoding";
+                                        }
+                                    }
+                                    if let Ok(bf) = fd.get(b"BaseFont") {
+                                        if let Object::Name(name) = bf {
+                                            let s = String::from_utf8_lossy(name);
+                                            if s.contains('+') {
+                                                return false;
+                                            }
+                                            return s.contains("Helvetica") || s.contains("Times") || s.contains("Courier") || s.contains("Arial");
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

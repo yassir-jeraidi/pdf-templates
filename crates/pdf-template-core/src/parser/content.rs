@@ -120,14 +120,22 @@ impl<'a> PageParser<'a> {
 
         let resources = match page_dict.get(b"Resources") {
             Ok(Object::Dictionary(d)) => Some(d),
-            Ok(Object::Reference(id)) => doc.get_dictionary(*id).ok(),
+            Ok(Object::Reference(id)) => match doc.get_object(*id) {
+                Ok(Object::Dictionary(d)) => Some(d),
+                Ok(Object::Stream(s)) => Some(&s.dict),
+                _ => None,
+            },
             _ => None,
         };
 
         if let Some(res) = resources {
             let font_dict_obj = match res.get(b"Font") {
                 Ok(Object::Dictionary(d)) => Some(d),
-                Ok(Object::Reference(id)) => doc.get_dictionary(*id).ok(),
+                Ok(Object::Reference(id)) => match doc.get_object(*id) {
+                    Ok(Object::Dictionary(d)) => Some(d),
+                    Ok(Object::Stream(s)) => Some(&s.dict),
+                    _ => None,
+                },
                 _ => None,
             };
 
@@ -136,7 +144,11 @@ impl<'a> PageParser<'a> {
                     let font_name = String::from_utf8_lossy(key).to_string();
                     let font_subdict = match val {
                         Object::Dictionary(d) => Some(d),
-                        Object::Reference(id) => doc.get_dictionary(*id).ok(),
+                        Object::Reference(id) => match doc.get_object(*id) {
+                            Ok(Object::Dictionary(d)) => Some(d),
+                            Ok(Object::Stream(s)) => Some(&s.dict),
+                            _ => None,
+                        },
                         _ => None,
                     };
 
