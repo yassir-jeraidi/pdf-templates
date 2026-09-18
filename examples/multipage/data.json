@@ -1,0 +1,20 @@
+{
+  "provider": {
+    "name": "ACME Cloud Solutions SARL",
+    "signatory": "Yassir Jeraidi (CEO)"
+  },
+  "client": {
+    "name": "Global Logistics Corp",
+    "signatory": "Sarah Connor (CTO)"
+  },
+  "contract": {
+    "effective_date": "01/10/2026",
+    "payment_terms": "Net 30 Days via Wire Transfer",
+    "signed_date": "18/09/2026"
+  },
+  "project": {
+    "name": "Global Logistics Modernization",
+    "milestone_1": "Architecture & Core Engine Delivery",
+    "milestone_2": "Integration, Testing & Production Deployment"
+  }
+}

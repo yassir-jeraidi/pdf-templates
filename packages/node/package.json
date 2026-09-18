@@ -1,0 +1,36 @@
+{
+  "name": "pdf-template-engine",
+  "version": "0.1.0",
+  "description": "Production-ready PDF template engine for Node.js and TypeScript",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "pdf-template": "./bin/cli.js"
+  },
+  "scripts": {
+    "build:rust": "cargo build --release -p pdf-template-napi",
+    "copy:binding": "node scripts/copy-binding.js",
+    "build:ts": "tsc",
+    "build": "npm run copy:binding && npm run build:ts",
+    "test": "node --test ../../tests/*.test.mjs"
+  },
+  "keywords": [
+    "pdf",
+    "template",
+    "pdf-template",
+    "pdf-engine",
+    "docx-templates",
+    "invoice",
+    "report",
+    "document-generator"
+  ],
+  "author": "Yassir Jeraidi",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

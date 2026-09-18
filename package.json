@@ -1,0 +1,32 @@
+{
+  "name": "pdf-template-engine-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Production-ready PDF template engine for Node.js and TypeScript",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build:rust": "cargo build --release -p pdf-template-napi",
+    "build:rust:debug": "cargo build -p pdf-template-napi",
+    "build": "npm run build --workspace=pdf-template-engine",
+    "test:rust": "cargo test --workspace",
+    "test:node": "npm run test --workspace=pdf-template-engine",
+    "test": "npm run test:rust && npm run test:node"
+  },
+  "keywords": [
+    "pdf",
+    "template",
+    "engine",
+    "rust",
+    "napi",
+    "generator",
+    "docx-templates",
+    "pdf-template"
+  ],
+  "author": "Yassir Jeraidi",
+  "license": "MIT",
+  "devDependencies": {
+    "pdfjs-dist": "^6.3.289"
+  }
+}

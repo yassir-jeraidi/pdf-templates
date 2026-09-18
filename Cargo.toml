@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "crates/pdf-template-core",
+    "crates/pdf-template-napi",
+]
+resolver = "2"

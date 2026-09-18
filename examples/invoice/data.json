@@ -1,0 +1,11 @@
+{
+  "customer": {
+    "name": "Yassir Jeraidi",
+    "email": "yassir@example.com"
+  },
+  "invoice": {
+    "number": "INV-2026-001",
+    "date": "18/09/2026",
+    "total": 15000
+  }
+}
